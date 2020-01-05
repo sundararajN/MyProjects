@@ -1,0 +1,707 @@
+---
+title: "DA5030.Proj.Sundararaj"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r warning=FALSE}
+                                     ###########
+                                     ##Project##
+                                     ###########
+
+ ##########################################################################################
+ #Title: Prediction of Individual and overall risk factors that contribute to Coronary                             Heart Disease(CHD) in 10 years.
+ ##########################################################################################
+
+library(caret) #caret package to implement 10-fold cross validation,tuning of models
+library(tidyverse)
+library(psych) #for pairwise correlation/histogram distribution
+library(gmodels) #for comparison of actual and predicted values
+library(class) #for implementing knn algorithm
+library(pROC) #for AUC computation
+library(ROCR) #for AUC computation
+library(kernlab) #for building svm models
+library(rpart) #loading rpart library for training a tree
+library(rpart.plot) #loading rpart.plot package to visualize decision trees
+library(RWeka) #to build model trees
+library(SuperLearner) #for building ensemble models
+library(plotly) #for building barplots,boxplots
+
+                            ##########################
+                            ##Business Understanding##
+                            ##########################
+
+#World Health organization (WHO) estimates that 12 million deaths occur worldwide due to heart diseases.Half of the deceased in the United States and developing countries occured due to CHD.Early detection of cardiovascular diseases aids in making decision on the lifestyle of high risky patients which will in turn reduce complications and help in creating  effective preventive measures for it.Data was collected from an ongoing study that was happening to residents of Framingham , Massachusetts.
+#Objective: to predict whether a person with an individual/combined set of features have an overall/individual risk of Coronary Heart Disease in 10 years. 
+
+
+```
+
+```{r warning=FALSE}
+
+                             ########################
+                             ###Data Understanding###
+                             ########################
+
+### Data provides information about 4240 patients with 16 attributes which elaborates about the potential risk factors like if a particular patient has diabetes, smoking habits.. etc. To brief, the data comprises of features which could be categorized into
+#Demographic factors: Gender( categorical variable ) , Age(Numeric variable);
+#Behavioral Factors: Current Smoker(categorical variable), count of cigarettes per day(Numerical Variable);
+#Medical Factors: Blood Pressure Details( categorical variable ), Systolic Blood Pressure ( Numeric variable ), Diastolic Blood Pressure ( Numeric variable ), Hypertension ( categorical variable ), Diabetes ( categorical variable ),Cholesterol ( Numeric variable ),Stroke ( Categorical Variable ),Body Mass Index ( Numeric variable ),Heart Rate ( Numeric variable ),Glucose level( Numeric variable ) and the predictive variable(target: 10 year risk of coronary heart disease).
+
+Heart_Dataset <- read.csv("~/framingham.csv",header = TRUE,stringsAsFactors = TRUE) #reading in thr data through read.csv function
+
+colnames(Heart_Dataset) <- c("Gender","Age","Education","Current_Smoker","Cigs_Per_Day","Bp_Meds","Prevalent_Stroke","Prevalent_Hyp","Diabetes","Total_Cholesterol","Sys_BP","Dia_BP","BMI","Heart_Rate","Glucose","Ten_Year_CHD") #setting column names for the dataset
+
+#conversion of certain variables into factor variables
+Heart_Dataset$Gender <- as.factor(Heart_Dataset$Gender)
+Heart_Dataset$Current_Smoker <- as.factor(Heart_Dataset$Current_Smoker)
+Heart_Dataset$Bp_Meds <- as.factor(Heart_Dataset$Bp_Meds)
+Heart_Dataset$Prevalent_Hyp <- as.factor(Heart_Dataset$Prevalent_Hyp)
+Heart_Dataset$Prevalent_Stroke <- as.factor(Heart_Dataset$Prevalent_Stroke)
+Heart_Dataset$Diabetes <- as.factor(Heart_Dataset$Diabetes)
+Heart_Dataset$Ten_Year_CHD <- as.factor(Heart_Dataset$Ten_Year_CHD)
+ 
+str(Heart_Dataset) #analyzing the structure of heart dataset
+summary(Heart_Dataset) #looking into the distribution of the variables in the heart dataset
+table(Heart_Dataset$Ten_Year_CHD) #analyzing the count of each category in the target variable
+prop.table(table(Heart_Dataset$Ten_Year_CHD)) #analyzing the proportion of each category present in the target variable(10 year Coronary Heart Disease)
+
+```
+
+```{r warning=FALSE}
+                              ####################
+                              ##Data Preparation##
+                              ####################
+
+### Dataset variables with respect to categorical variables and target variables were visualized through barplots and boxplots.Group of Medical condition related variables were visualized and outliers were detected through outliers.Data was further undergone exploratory data analysis- correlation between variables were analyzed and histogram distribution of all variables were visualized.Data was imputed through Mean Imputation/Mode Imputation of variables containing missing values.Data due to their distribution was normalized through min-max normalization.Categorical variables of the datasets were analyzed and dummy coded through one hot encoding.PCA was performed but it seemed not relevant to use it for this dataset.Derived features were not necessary for this dataset.Data was processed and Transformed in this phase before Model Construction phase.
+
+##### Data Exploration #####
+
+##While looking into the structure of the data, Most of the variables comprises of missing values which needs to be imputed and some variables needs to be normalized
+
+pairs.panels(Heart_Dataset[,c("Age","Education","Cigs_Per_Day","Total_Cholesterol","Sys_BP","Dia_BP","BMI","Heart_Rate","Glucose","Ten_Year_CHD")]) #looking into the correlation between the variables and its relationship with target variable and histogram distribution of each variable of the Heart Study Dataset.
+
+##Barplot distribution of variables vs the target variable
+
+##Patterns of Demographic factors: (Age and Gender)
+
+plot_ly(data = Heart_Dataset, x = ~Ten_Year_CHD, y = ~Age,color = ~Gender,type = "bar") %>%layout(xaxis = list(title = "10 year Coronary Heart Disease Risk"),yaxis = list(title = "Age Distribution"),barmode = 'stack')
+
+#Barplot has categorized different age people according to their coronary risks and with respect to gender distribution.
+
+##Patterns of Behavioral Factors: Current Smoker(categorical variable), count of cigarettes per day(Numerical Variable) in the dataset
+
+plot_ly(data = Heart_Dataset, x = ~Ten_Year_CHD, y = ~Cigs_Per_Day,color = ~Gender, type = 'bar')%>%layout(xaxis = list(title = '10 Year Coronary Heart Disease Risk'),yaxis = list(title = 'Cigrattes Per Day'),margin = list(b = 100),barmode = 'stack') #This implies that current Female smokers are prone to develop a risk of coronary risk disease.        
+
+##Patterns of Medical Factors: Blood Pressure Details( categorical variable ), Systolic Blood Pressure ( Numeric variable ), Diastolic Blood Pressure ( Numeric variable ), Hypertension ( categorical variable ), Diabetes ( categorical variable ),Cholesterol ( Numeric variable ),Stroke ( Categorical Variable ),Body Mass Index ( Numeric variable ),Heart Rate ( Numeric variable ),Glucose level( Numeric variable ) and the predictive variable(target: 10 year risk of coronary heart disease) in the heart study dataset with respect to the 10 year coronary heart disease risk.
+
+##Patterns of Heart rate and Hypertension on the target variable (10-year coronary heart disease risk)
+
+plot_ly(data = Heart_Dataset, x = ~Ten_Year_CHD, y = ~Heart_Rate,color = ~Prevalent_Hyp,type = 'bar')%>%layout(xaxis = list(title = "10 Year Coronary Heart Disease Risk"),yaxis = list(title = "Heart Rate"),barmode = 'stack') #hypertension has a half an effect over persons with an increase in heart rate in developing coronary heart disease risk. 
+
+plot_ly(data = Heart_Dataset, x = ~Ten_Year_CHD, y = ~Total_Cholesterol,color = ~Prevalent_Stroke,type = 'bar')%>%layout(xaxis = list(title = "10 Year Coronary Heart Disease Risk"),yaxis = list(title = "Cholesterol content"),barmode = 'stack') #stroke prevalence has a minimized effect over persons with cholesterol in developing coronary heart disease risk.
+
+plot_ly(data = Heart_Dataset, x = ~Ten_Year_CHD, y = ~Sys_BP,color = ~Bp_Meds,type = 'bar')%>%layout(xaxis = list(title = "10 Year Coronary Heart Disease Risk"),yaxis = list(title = "Systolic Blood Pressure"),barmode = 'stack') 
+
+plot_ly(data = Heart_Dataset, x = ~Ten_Year_CHD, y = ~Dia_BP,color = ~Bp_Meds,type = 'bar')%>%layout(xaxis = list(title = "10 Year Coronary Heart Disease Risk"),yaxis = list(title = "Diastolic Blood Pressure"),barmode = 'stack') 
+
+#persons who are under bp medication will have a minimized effect for patients with decreased/unusual sys bp and diastolic blood pressure in developing coronary heart disease risk.This indicates the importance of bp medication role in preventing coronary heart disease risk.
+
+##Patterns of patients conditions in the dataset
+plot_ly(data = Heart_Dataset, x = ~Ten_Year_CHD, y = ~BMI,name = "BMI",type = 'bar')%>% add_trace(y = ~Sys_BP,name = "Systolic Blood Pressure",marker = list(color = 'rgb(204,204,204)'))%>%add_trace(y = ~Dia_BP,name = "Diastolic Blood Pressure")%>%add_trace(y = ~Glucose,name = "Glucose")%>% add_trace(y = ~Age,name = "Age")%>%add_trace(y = ~Bp_Meds,name = "Blood Pressure Medication")%>%layout(xaxis = list(title = "10 Year Coronary Heart Disease Risk"),yaxis = list(title = "Patient Medical Conditions"),barmode = 'group') #this implies that systolic blood pressure seems to have a higher impact on the 10-year chd risk of a patient and the next being diastolic blood pressure,glucose have a considerable effect for 10-year chd risk.
+
+##Patterns of different medical conditions over ten year coronary heart disease
+
+plot_ly(data = Heart_Dataset, x = ~Ten_Year_CHD, y = ~Heart_Rate,name = "Heart rate",type = 'bar')%>% add_trace(y = ~Total_Cholesterol,name = "Cholesterol",marker = list(color = 'rgb(204,204,204)'))%>%add_trace(y = ~Diabetes,name = "Diabetes")%>%add_trace(y = ~Cigs_Per_Day,name = "cigrattes per day")%>%layout(xaxis = list(title = "10 Year Coronary Heart Disease Risk"),yaxis = list(title = "Medical Conditions"),barmode = 'group') #cholesterol seems to have hugh impact for creating a 10-year coronary heart disease risk compared to other conditions which seems to be a valid scientific reason for creating coronary heart disease risk since heart disease basically occurs due to blockage of blood vessels from cholesterol desposition.While heart rate increase could also result in chd risk and other factors like smoking and diabetes have a minimal effect on risk.   
+
+###Exploratory Data Plots(BoxPlots) to visualize skew distribution and outliers in the dataset### Boxplots consist of the min and max values that are without outliers at the lower and upper end, 25 percentile, 75 percentile, interquantile range and middle median value.Dots represents outliers.
+
+plot_ly(Heart_Dataset, y = ~Age,color = ~Ten_Year_CHD,type = "box") #Age doesnt have any outliers
+plot_ly(Heart_Dataset, y = ~Education,color = ~Ten_Year_CHD,type = "box") #Education has an outlier
+plot_ly(Heart_Dataset, y = ~Cigs_Per_Day,color = ~Ten_Year_CHD,type = "box") #cigrattes per day has outliers
+plot_ly(Heart_Dataset, y = ~Total_Cholesterol,color = ~Ten_Year_CHD,type = "box") #Cholesterol variable has a lot of outliers
+plot_ly(Heart_Dataset, y = ~Sys_BP,color = ~Ten_Year_CHD,type = "box") #systolic blood pressure has a lot of outliers
+plot_ly(Heart_Dataset, y = ~Dia_BP,color = ~Ten_Year_CHD,type = "box") #Diastolic blood pressure comprises of outliers.
+plot_ly(Heart_Dataset, y = ~BMI,color = ~Ten_Year_CHD,type = "box") #Presence of outliers were detected for bmi variable through boxplots
+plot_ly(Heart_Dataset, y = ~Heart_Rate,color = ~Ten_Year_CHD,type = "box") #Presence of outliers were detected for heart rate variable in the dataset
+plot_ly(Heart_Dataset, y = ~Glucose,color = ~Ten_Year_CHD,type = "box") #lot of outliers were detected for glucose variable
+
+##Outliers were present in glucose,heart rate,BMI,systolic bp,diastolic bp,total cholesterol,cigs per day,education.Most of the variables had outliers except age.
+
+##Detection of Outlier Values through z-score computation in the variables present in the dataset
+
+###z_score_computation function to extract outliers from each variable of the dataset
+
+z_score_computation <- function(x){
+  
+  
+  z_score <- abs(((mean(x) - x)/ sd(x)))
+  extracted_z_score <- which(z_score > 3)
+  return(extracted_z_score)
+  
+}
+
+z_score_data <- apply(Heart_Dataset[,c("Education","Cigs_Per_Day","Total_Cholesterol","Sys_BP","Dia_BP","BMI","Heart_Rate","Glucose")],2, function(x) z_score_computation(x)) #applying each column of the dataset to the z_score function
+
+###removing outliers from each variable
+
+out_Sys_BP <- Heart_Dataset$Sys_BP[-z_score_data[[4]]]
+out_Dia_BP <- Heart_Dataset$Dia_BP[-z_score_data[[5]]]
+
+Heart_Study_Modified_Data <- Heart_Dataset %>% filter(Sys_BP %in% out_Sys_BP)
+Heart_Study_Modified_Data <- Heart_Study_Modified_Data %>% filter(Dia_BP %in% out_Dia_BP)
+
+Heart_Study_Modified_Data #loading outlier removed data
+
+                             
+             ################# Data Tidying/Shaping #################
+                             
+##Imputing Missing Values
+
+#Mean/Median/Mode Imputation is a preferred imputation methodology in this case which seemed to be an effective procedure 
+
+summary(Heart_Dataset)  
+
+##Education,cigarettes per day,Bp Medication,Total cholesterol,BMI,heart rate and glucose rate are the variables consisting of missing values
+
+Heart_Dataset_Non_Missing_Education <- Heart_Dataset[!is.na(Heart_Dataset$Education),]
+Heart_Dataset_Non_Missing_cigsperday <- Heart_Dataset[!is.na(Heart_Dataset$Cigs_Per_Day),]
+Heart_Dataset_Non_Missing_BPMeds <- Heart_Dataset[!is.na(Heart_Dataset$Bp_Meds),]
+Heart_Dataset_Non_Missing_Total_Cholesterol <- Heart_Dataset[!is.na(Heart_Dataset$Total_Cholesterol),]
+Heart_Dataset_Non_Missing_BMI <- Heart_Dataset[!is.na(Heart_Dataset$BMI),]
+Heart_Dataset_Non_Missing_Heart_Rate <- Heart_Dataset[!is.na(Heart_Dataset$Heart_Rate),]
+Heart_Dataset_Non_Missing_Glucose <- Heart_Dataset[!is.na(Heart_Dataset$Glucose),]
+
+##Extracting each variables data according to their gender categories
+
+Heart_Dataset_Non_Missing_Education_0 <- Heart_Dataset_Non_Missing_Education %>% filter(Gender == 0)
+Heart_Dataset_Non_Missing_Education_1 <- Heart_Dataset_Non_Missing_Education %>% filter(Gender == 1)
+Heart_Dataset_Non_Missing_cigsperday_0 <- Heart_Dataset_Non_Missing_cigsperday %>% filter(Gender == 0)
+Heart_Dataset_Non_Missing_cigsperday_1 <- Heart_Dataset_Non_Missing_cigsperday %>% filter(Gender == 1)
+Heart_Dataset_Non_Missing_Total_Cholesterol_0 <- Heart_Dataset_Non_Missing_Total_Cholesterol %>% filter(Gender == 0)
+Heart_Dataset_Non_Missing_Total_Cholesterol_1 <- Heart_Dataset_Non_Missing_Total_Cholesterol %>% filter(Gender == 1)
+Heart_Dataset_Non_Missing_BMI_0 <- Heart_Dataset_Non_Missing_BMI %>% filter(Gender == 0)
+Heart_Dataset_Non_Missing_BMI_1 <- Heart_Dataset_Non_Missing_BMI %>% filter(Gender == 1)
+Heart_Dataset_Non_Missing_Heart_Rate_0 <- Heart_Dataset_Non_Missing_Heart_Rate %>% filter(Gender == 0)
+Heart_Dataset_Non_Missing_Heart_Rate_1 <- Heart_Dataset_Non_Missing_Heart_Rate %>% filter(Gender == 1)
+Heart_Dataset_Non_Missing_Glucose_0 <- Heart_Dataset_Non_Missing_Glucose %>% filter(Gender == 0)
+Heart_Dataset_Non_Missing_Glucose_1 <- Heart_Dataset_Non_Missing_Glucose %>% filter(Gender == 1)
+
+##Mode imputation of BpMeds variable
+
+length(Heart_Dataset_Non_Missing_BPMeds[Heart_Dataset_Non_Missing_BPMeds$Gender == 0,]$Gender)
+length(Heart_Dataset_Non_Missing_BPMeds[Heart_Dataset_Non_Missing_BPMeds$Gender == 1,]$Gender)
+
+Mode_BpMeds_Data <- unique(Heart_Dataset_Non_Missing_BPMeds[Heart_Dataset_Non_Missing_BPMeds$Gender == 0,]$Gender)
+
+##computing mean value for each missing value variables with respect to their gender
+
+Mean_Education_Gender0_Data <- round(mean(Heart_Dataset_Non_Missing_Education_0$Education))
+Mean_Education_Gender1_Data <- round(mean(Heart_Dataset_Non_Missing_Education_1$Education))
+Mean_Cigs_Per_Day_Gender0_Data <- round(mean(Heart_Dataset_Non_Missing_cigsperday_0$Cigs_Per_Day))
+Mean_Cigs_Per_Day_Gender1_Data <- round(mean(Heart_Dataset_Non_Missing_cigsperday_1$Cigs_Per_Day))
+Mean_Total_Cholesterol_Gender0_Data <- round(mean(Heart_Dataset_Non_Missing_Total_Cholesterol_0$Total_Cholesterol))
+Mean_Total_Cholesterol_Gender1_Data <- round(mean(Heart_Dataset_Non_Missing_Total_Cholesterol_1$Total_Cholesterol))
+Mean_BMI_Gender0_Data <- round(mean(Heart_Dataset_Non_Missing_BMI_0$BMI))
+Mean_BMI_Gender1_Data <- round(mean(Heart_Dataset_Non_Missing_BMI_1$BMI))
+Mean_Heart_Rate_Gender0_Data <- round(mean(Heart_Dataset_Non_Missing_Heart_Rate_0$Heart_Rate))
+Mean_Heart_Rate_Gender1_Data <- round(mean(Heart_Dataset_Non_Missing_Heart_Rate_1$Heart_Rate))
+Mean_Glucose_Gender0_Data <- round(mean(Heart_Dataset_Non_Missing_Glucose_0$Glucose))
+Mean_Glucose_Gender1_Data <- round(mean(Heart_Dataset_Non_Missing_Glucose_1$Glucose))
+
+##Mean Imputation of the variables containing missing values(Education, cigs per day, total cholesterol, BMI, Heart Rate and glucose) and mode imputation (Bp_Meds)
+
+Heart_Dataset[Heart_Dataset$Gender == 0 & is.na(Heart_Dataset$Education),]$Education <- Mean_Education_Gender0_Data
+Heart_Dataset[Heart_Dataset$Gender == 1 & is.na(Heart_Dataset$Education),]$Education <- Mean_Education_Gender1_Data
+Heart_Dataset[Heart_Dataset$Gender == 0 & is.na(Heart_Dataset$Cigs_Per_Day),]$Cigs_Per_Day <- Mean_Cigs_Per_Day_Gender0_Data
+Heart_Dataset[Heart_Dataset$Gender == 1 & is.na(Heart_Dataset$Cigs_Per_Day),]$Cigs_Per_Day <- Mean_Cigs_Per_Day_Gender1_Data
+Heart_Dataset[Heart_Dataset$Gender == 0 & is.na(Heart_Dataset$Total_Cholesterol),]$Total_Cholesterol <- Mean_Total_Cholesterol_Gender0_Data
+Heart_Dataset[Heart_Dataset$Gender == 1 & is.na(Heart_Dataset$Total_Cholesterol),]$Total_Cholesterol <- Mean_Total_Cholesterol_Gender1_Data
+Heart_Dataset[Heart_Dataset$Gender == 0 & is.na(Heart_Dataset$BMI),]$BMI <- Mean_BMI_Gender0_Data
+Heart_Dataset[Heart_Dataset$Gender == 1 & is.na(Heart_Dataset$BMI),]$BMI <- Mean_BMI_Gender1_Data
+#Heart_Dataset[Heart_Dataset$Gender == 0 & is.na(Heart_Dataset$Heart_Rate),]$Heart_Rate <- Mean_Heart_Rate_Gender0_Data
+Heart_Dataset[Heart_Dataset$Gender == 1 & is.na(Heart_Dataset$Heart_Rate),]$Heart_Rate <- Mean_Heart_Rate_Gender1_Data
+Heart_Dataset[Heart_Dataset$Gender == 0 & is.na(Heart_Dataset$Glucose),]$Glucose <- Mean_Glucose_Gender0_Data
+Heart_Dataset[Heart_Dataset$Gender == 1 & is.na(Heart_Dataset$Glucose),]$Glucose <- Mean_Glucose_Gender1_Data
+Heart_Dataset[is.na(Heart_Dataset$Bp_Meds),]$Bp_Meds <- Mode_BpMeds_Data
+
+summary(Heart_Dataset) #analyzing the structure of the dataset after imputation
+
+#Normalization:
+
+names(Heart_Dataset)
+
+#### normalize_Data function normalizes numeric variables using min max normalization ####
+
+normalize_Data <- function(x){
+  
+  
+  min_max_norm <- (x - min(x)) / (max(x) - min(x))
+  return(min_max_norm)
+
+}
+
+Heart_Norm_Data <- lapply(Heart_Dataset[,c("Age","Education","Cigs_Per_Day","Total_Cholesterol","Sys_BP","Dia_BP","BMI","Heart_Rate","Glucose")], function(x) normalize_Data(x)) %>% bind_cols() #passing each column of non-uniformly distributed variables to normalize them
+
+Heart_Normalized_Dataset <- cbind(Heart_Dataset[,!names(Heart_Dataset) %in% c("Age","Education","Cigs_Per_Day","Total_Cholesterol","Sys_BP","Dia_BP","BMI","Heart_Rate","Glucose")], Heart_Norm_Data) #binding the normalized data and the other variables of the dataset
+
+# Outlier Removed Data
+
+Heart_Out_Norm_Data <- lapply(Heart_Study_Modified_Data[,c("Age","Education","Cigs_Per_Day","Total_Cholesterol","Sys_BP","Dia_BP","BMI","Heart_Rate","Glucose")], function(x) normalize_Data(x)) %>% bind_cols() #passing each column of non-uniformly distributed outlier removed variables to normalize them
+
+Heart_Normalized_Modified_Data <- cbind(Heart_Study_Modified_Data[,!names(Heart_Study_Modified_Data) %in% c("Age","Education","Cigs_Per_Day","Total_Cholesterol","Sys_BP","Dia_BP","BMI","Heart_Rate","Glucose")], Heart_Out_Norm_Data) #binding the normalized data and the other variables of the outlier removed dataset
+
+##Dummy coding categorical variables of the tidied Dataset
+
+Heart_Data <-Heart_Normalized_Dataset #replicating the processed dataset
+
+Heart_Dummy_Coded_Data <- dummyVars(Ten_Year_CHD ~ ., data = Heart_Data)
+Heart_Dummy_Coded_Predictions <- predict(Heart_Dummy_Coded_Data, newdata = Heart_Data)
+Heart_Study_Dummy_Coded_Dataset <- cbind(data.frame(Heart_Dummy_Coded_Predictions), Ten_Year_CHD = Heart_Data[,"Ten_Year_CHD"])
+
+Heart_Study_Dummy_Coded_Dataset
+
+##Dummy Coding outlier removed categorical variables of the heart study dataset
+
+Heart_Study_Data <- Heart_Normalized_Modified_Data
+
+Heart_Dummy_Coded_Modified_Data <- dummyVars(Ten_Year_CHD ~ ., data = Heart_Study_Data)
+Heart_Dummy_Coded_Modifed_Predictions <- predict(Heart_Dummy_Coded_Modified_Data, newdata = Heart_Study_Data)
+Heart_Study_Modified_Dummy_Coded_Dataset <- cbind(data.frame(Heart_Dummy_Coded_Modifed_Predictions), Ten_Year_CHD = Heart_Study_Data[,"Ten_Year_CHD"])
+
+Heart_Study_Modified_Dummy_Coded_Dataset
+
+##Since The Data size is large(4240 rows), Data is partitioned into 75% of Training dataset and 25% of testing dataset.Sampling is not required in this case because data distribution is random
+
+Part_Val <- (nrow(Heart_Study_Dummy_Coded_Dataset)*75)/100
+
+Heart_Study_Train_Data <- Heart_Study_Dummy_Coded_Dataset[1 : Part_Val,]
+Heart_Study_Test_Data <- Heart_Study_Dummy_Coded_Dataset[((Part_Val)+1) : nrow(Heart_Study_Dummy_Coded_Dataset),]
+
+##Partition of outlier removed heart study Dataset
+
+Heart_Study_Mod_Train_Data <- Heart_Study_Modified_Dummy_Coded_Dataset[1 : Part_Val,]
+Heart_Study_Mod_Test_Data <- Heart_Study_Modified_Dummy_Coded_Dataset[((Part_Val)+1) : nrow(Heart_Study_Modified_Dummy_Coded_Dataset),]
+
+####### Feature Engineering: Principal Component Analysis ########
+
+PCA_Heart_Study_Train_Data <- prcomp(Heart_Study_Train_Data[,!names(Heart_Study_Train_Data) == c("Ten_Year_CHD")],scale. = TRUE) #PCA analysis on the actual dataset
+
+##Interpretation: First Principal Component is highly correlated with the variables:Current_Smoker.0,Bp.Med.1,Prevalent_Hyp.1,Age,Sys bp, diastolic blood pressure.Principal Component 2 is highly correlated with the variables: Gender.1,Current Smoker,Cigarettes per day.
+
+PCA_Heart_Study_Train_Data #looking into the principal component of each variable
+screeplot(PCA_Heart_Study_Train_Data,type = "line") #Around 7 Components explain maximum variance in the data
+
+##Principal Component Analysis is not required in this case sinces the dimensions are less.Derived features are not required for this dataset.
+
+```
+
+```{r warning=FALSE}
+
+                      #########################################
+                      ## Model COnstruction/Model Evaluation ##
+                      #########################################
+
+#Data Modeling - Logistic Regression(Binomial) K- nearest neighbors, Decision Trees,(Nominal feature prediction based on numerical variables of the dataset), Support Vector Machines (SVM) machine learning models based on the predictive variable(10 year risk of Coronary Heart Disease) in the modeling phase.The following Machine Learning Models were choosen because of our objective being a nominal prediction based on a mixture of numeric prediction and was clearly a classification problem, Algorithms like KNN,Model/Regression Trees, SVM and LM were choosen.
+#Data Evaluation: Dataset were partitioned into training and testing dataset.Model was built based upon the training dataset and predictions were made based on the testing dataset to evaluate the classification accuracy. K-Fold Cross Validation was performed on the built models and accuracy and validation errors were computed.Confusion matrix were created which represents the performance of the algorithm on the testing dataset through Classification Accuracy and Misclassification rates.Apart from this, evaluation metrics such as RMSE(Root Mean Squared Error), AUC(Area Under Curve) were computed and analyzed detailing about the model performance and effectiveness of the model.
+
+     ########################## KNN Algorithm ###########################
+
+K_Values_KNN <- 8:14 #creating a vector of k values
+Heart_Study_Train_Labels <- Heart_Study_Train_Data$Ten_Year_CHD #training labels
+
+#creating empty lists to store the algorithm and cross table results
+Heart_Study_Knn <- list()
+Heart_Study_Pred <- list()
+Sensitivity_KNN <- list()
+  
+##creating a for loop to test K-Value
+#knn algorithm on the training and testing data for a set of k values to determine which generates maximum accuracy
+
+for (i in 1 : length(K_Values_KNN)) {
+  
+Heart_Study_Knn[[i]] <- knn(train = Heart_Study_Train_Data,test = Heart_Study_Test_Data,cl = Heart_Study_Train_Labels,k = K_Values_KNN[i])
+Heart_Study_Pred[[i]] <- CrossTable(x = Heart_Study_Test_Data$Ten_Year_CHD,y = Heart_Study_Knn[[i]], prop.chisq = FALSE)
+Sensitivity_KNN[[i]] <- (Heart_Study_Pred[[i]]$t[1] + Heart_Study_Pred[[i]]$t[4]) / (sum(Heart_Study_Pred[[i]]$t)) 
+
+}
+
+knn_Data <- data.frame(K_Values = K_Values_KNN, Sensitivity = unlist(Sensitivity_KNN))
+
+ggplot(data = knn_Data,mapping = aes(x = K_Values, y = Sensitivity))+geom_point()+geom_smooth() #creating a ggplot to visualize the one with the best sensitivity results
+
+
+##K=12 provides a good sensitivity results
+
+KNN_Heart_Study_Model <- knn(train = Heart_Study_Train_Data,test = Heart_Study_Test_Data,cl = Heart_Study_Train_Labels,k = 12)
+Heart_Study_Test_Predictions <- CrossTable(x = Heart_Study_Test_Data$Ten_Year_CHD,y = KNN_Heart_Study_Model, prop.chisq = FALSE)
+Sensitivity <- (Heart_Study_Test_Predictions$t[1] + Heart_Study_Test_Predictions$t[4]) / (sum(Heart_Study_Test_Predictions$t))
+Sensitivity
+Specificity <- (Heart_Study_Test_Predictions$t[2] + Heart_Study_Test_Predictions$t[3]) / (sum(Heart_Study_Test_Predictions$t))
+Specificity 
+
+##True Negative: 900; True Positive: 151; False Negative: 0; False Positive: 9
+#900 cases were correctly predicted as the ones with no CHD risk while 151 cases were correctly predicted as the ones with CHD risk.Sensitivity:99%,Specificity: 0.9%
+
+##Interpretation: KNN algorithm proved to be an excellent algorithm for this set of data with lesser specificity
+
+#####computing AUC and 10-Fold Cross Validation for KNN######
+
+Heart_Study_ROC_knn_Prediction <- roc(Heart_Study_Test_Data$Ten_Year_CHD,as.numeric(as.character(KNN_Heart_Study_Model))) #extract the predicted prob of target variable for the testing dataset
+auc_knn_performance <- auc(Heart_Study_ROC_knn_Prediction) #computing AUC for the decision tree model 
+auc_knn_performance #0.97 is the AUC.This indicates that the model has exhbited a good performance
+
+#####10-Fold Validation on The decision Tree model
+
+trcontrol <- trainControl(method = "repeatedcv",number = 10,savePredictions =  TRUE) #setting no of experiments
+
+Heart_Study_Train_KNN_Data <- Heart_Study_Train_Data
+Heart_Study_Train_KNN_Data$Ten_Year_CHD <- as.numeric(as.character(Heart_Study_Train_KNN_Data$Ten_Year_CHD))
+
+knn_Fit <- train(Ten_Year_CHD ~., data = Heart_Study_Train_Data,method = 'knn',trControl = trcontrol, tuneLength = 10) #training SVM on the data
+knn_Prediction <- predict(knn_Fit, newdata = Heart_Study_Test_Data) #predictions on the tetsing data
+confusionMatrix(data = knn_Prediction, Heart_Study_Test_Data$Ten_Year_CHD) #creating confusion matrix between actual target variable and predicted variable
+
+##10-fold cross validation accuracy is 85%
+
+```
+
+```{r warning=FALSE}
+                 
+
+               ########### Support Vector Machine Approach ############
+
+### Radial Basis Kernel(Gaussian) based SVM Model ###
+
+Heart_Study_SVM_rbfdot <- ksvm(Ten_Year_CHD ~ ., data = Heart_Study_Train_Data, kernel = "rbfdot") #training svm model based gaussian kernel on heart study training data
+
+Heart_Study_SVM_rbfdot_predictions <- predict(Heart_Study_SVM_rbfdot,Heart_Study_Test_Data)
+#prediction of the svm model based on gaussian kernel on the heart study testing data
+
+table(Heart_Study_SVM_rbfdot_predictions,Heart_Study_Test_Data$Ten_Year_CHD) #creating a table between the actual target and observed target variable (Ten year CHD)
+
+##Interpretation: 894 cases were correctly predicted as True Negatives which implies the no of cases correctly classified as without ten year coronary heart disease prediction and 5 cases were correctly classified as persons with ten year coronary heart risk prediction 
+
+confusionMatrix(Heart_Study_SVM_rbfdot_predictions,as.factor(Heart_Study_Test_Data$Ten_Year_CHD)) #creating a confusion matrix between the actual variable and observed variable
+
+##Interpretation: 85% is the accuracy for SVM Model on the heart study data.Even though TP and TN rates are more,since the total cases of coronary heart risk prediction are less and henceforth a reduced accuracy but higher sensitivity and lesser specificity. 
+
+##### Linear Kernel based SVM Model #####
+
+Heart_Study_SVM_Vdot <- ksvm(Ten_Year_CHD ~ ., data = Heart_Study_Train_Data, kernel = "vanilladot") #training svm model based linear kernel on heart study training data
+
+Heart_Study_SVM_Vdot_predictions <- predict(Heart_Study_SVM_Vdot,Heart_Study_Test_Data)
+#prediction of the svm model based linear kernel on the heart study testing data
+
+table(Heart_Study_SVM_Vdot_predictions,Heart_Study_Test_Data$Ten_Year_CHD) #creating a table between the actual target and observed target variable (Ten year CHD)
+
+##900 cases were correctly identified by linear dot kernel as the cases who doesnt have a 10-year coronary heart risk prediction and the algorithm didnt predict any of the cases who are prone to CHD risk
+
+confusionMatrix(as.factor(Heart_Study_SVM_Vdot_predictions),as.factor(Heart_Study_Test_Data$Ten_Year_CHD)) #creating a confusion matrix between the actual variable and observed variable
+
+##Accuracy seems to be around 85%.But the algorithm failed to correctly predict the True Positives making a costlier mistake.
+
+##### Polynomial Kernel based SVM Model #####
+
+Heart_Study_SVM_Polydot <- ksvm(Ten_Year_CHD ~ ., data = Heart_Study_Train_Data, kernel = "polydot") #training svm model based polynomial kernel on heart study training data
+
+Heart_Study_SVM_Polydot_predictions <- predict(Heart_Study_SVM_Polydot,Heart_Study_Test_Data)
+#prediction of the svm model based Polynomial kernel on the heart study testing data
+
+table(Heart_Study_SVM_Polydot_predictions,Heart_Study_Test_Data$Ten_Year_CHD) #creating a table between the actual target and observed target variable (Ten year CHD)
+
+confusionMatrix(Heart_Study_SVM_Polydot_predictions,Heart_Study_Test_Data$Ten_Year_CHD) #creating a confusion matrix between the actual variable and observed variable
+
+##Interpretation: Poly kernel produced similiar results as that of linear kernel based built svm models reporting an accuracy of 85%
+
+##### Hyberbolic Tangent Kernel based SVM Model #####
+
+Heart_Study_SVM_Tanhdot <- ksvm(Ten_Year_CHD ~ ., data = Heart_Study_Train_Data, kernel = "tanhdot") #training svm model based Hyberbolic Tangent Kernel on heart study training data
+
+Heart_Study_SVM_Tanhdot_predictions <- predict(Heart_Study_SVM_Tanhdot,Heart_Study_Test_Data)
+#prediction of the svm model based Hyberbolic Tangent Kernel on the heart study testing data
+
+table(Heart_Study_SVM_Tanhdot_predictions,Heart_Study_Test_Data$Ten_Year_CHD) #creating a table between the actual target and observed target variable (Ten year CHD)
+
+##Interpretation: 757 cases were correctly predicted by the tangent kernel based svm models as the cases with no CHD risk and 34 cases were correctly predicted as the cases with CHD risk
+
+confusionMatrix(Heart_Study_SVM_Tanhdot_predictions,Heart_Study_Test_Data$Ten_Year_CHD) #creating a confusion matrix between the actual variable and observed variable
+
+##Accuracy was reported as 75%.Specificity was around 21%.
+
+##### Laplacian Kernel based SVM Model #####
+
+Heart_Study_SVM_Laplacedot <- ksvm(Ten_Year_CHD ~ ., data = Heart_Study_Train_Data, kernel = "laplacedot") #training svm model based Laplacian Kernel on heart study training data
+
+Heart_Study_SVM_Laplacedot_predictions <- predict(Heart_Study_SVM_Laplacedot,Heart_Study_Test_Data)
+#prediction of the svm model based Laplacian Kernel on the heart study testing data
+
+table(Heart_Study_SVM_Laplacedot_predictions,Heart_Study_Test_Data$Ten_Year_CHD) #creating a table between the actual target and observed target variable (Ten year CHD)
+
+##894 cases were correctly classified as the cases who might not get ten year CHD risk and 5 cases as the ones were correctly classified as the ones who might get ten year CHD risk
+
+confusionMatrix(Heart_Study_SVM_Laplacedot_predictions,Heart_Study_Test_Data$Ten_Year_CHD) #creating a confusion matrix between the actual variable and observed variable
+
+##Accuracy was similiar to rbf kernel type based svm model predictions (85%).
+
+##### Bessel Kernel based SVM Model #####
+
+Heart_Study_SVM_Besseldot <- ksvm(Ten_Year_CHD ~ ., data = Heart_Study_Train_Data, kernel = "besseldot") #training svm model based Bessel Kernel on heart study training data
+
+Heart_Study_SVM_Besseldot_predictions <- predict(Heart_Study_SVM_Besseldot,Heart_Study_Test_Data)
+#prediction of the svm model based Bessel Kernel on the heart study testing data
+
+table(Heart_Study_SVM_Besseldot_predictions,Heart_Study_Test_Data$Ten_Year_CHD) #creating a table between the actual target and observed target variable (Ten year CHD)
+
+## 813 cases were correctly predicted by the besseldot kernel type based built svm models as True Negatives and 30 cases were correctly predicted as True Positives.
+
+confusionMatrix(Heart_Study_SVM_Besseldot_predictions,Heart_Study_Test_Data$Ten_Year_CHD) #creating a confusion matrix between the actual variable and observed variable
+
+##Accuracy: 80%.Even though overall accuracy was around 80% and is low compared to rbf based kernel type built svm model predictions, the no of True Positives correctly predicted by this model is higher(30)
+
+##### ANOVA RBF Kernel based SVM Model #####
+
+Heart_Study_SVM_anovadot <- ksvm(Ten_Year_CHD ~ ., data = Heart_Study_Train_Data, kernel = "anovadot") #training svm model based ANOVA RBF Kernel on heart study training data
+
+Heart_Study_SVM_anovadot_predictions <- predict(Heart_Study_SVM_anovadot,Heart_Study_Test_Data)
+#prediction of the svm model based ANOVA RBF Kernel on the heart study testing data
+
+table(Heart_Study_SVM_anovadot_predictions,Heart_Study_Test_Data$Ten_Year_CHD) #creating a table between the actual target and observed target variable (Ten year CHD)
+
+##73 cases were correctly identified as cases with no CHD risk and 143 cases were identified as cases with Coronary Heart Risk after 10 years.
+
+confusionMatrix(Heart_Study_SVM_anovadot_predictions,Heart_Study_Test_Data$Ten_Year_CHD) #creating a confusion matrix between the actual variable and observed variable
+
+##Accuracy reported was 20%.This indicates a very low accuracy compared to the other kernel types.
+
+##Interpretation: gaussian based kernel type built svm models reported an accuracy of 85% but their prediction of True Positives were low.Besseldot based kernel type built svm models reported an accuracy of 80% and predicted 30 cases of TP correctly.Linear dot based svm models reported an accuracy of 85% but couldnt predict TP properly.But Overall,The algorithm didnt consume a lot of time and wasnt computationally intensive while executing.
+
+#####computing AUC and 10-Fold Cross Validation for SVM######
+
+Heart_Study_ROC_SVM_Prediction <- roc(Heart_Study_Test_Data$Ten_Year_CHD,as.numeric(as.character(Heart_Study_SVM_rbfdot_predictions))) #extract the predicted prob of target variable for the testing dataset
+auc_SVM_performance <- auc(Heart_Study_ROC_SVM_Prediction) #computing AUC for the decision tree model 
+auc_SVM_performance #0.51 is the AUC.This indicates that the model has exhbited a fairly moderate performance
+
+#####10-Fold Validation on The decision Tree model
+
+trcontrol <- trainControl(method = "repeatedcv",number = 10,savePredictions = TRUE) #setting no of experiments
+
+SVM_Fit <- train(Ten_Year_CHD ~., data = Heart_Study_Train_Data,method = 'svmRadial',trControl = trcontrol, tuneLength = 10) #training SVM on the data
+SVM_Prediction <- predict(SVM_Fit, newdata = Heart_Study_Test_Data) #predictions on the tetsing data
+confusionMatrix(data = SVM_Prediction, Heart_Study_Test_Data$Ten_Year_CHD ) #creating confusion matrix between actual target variable and predicted variable
+
+##10-Fold Cross Validation Accuracy is 85%.Specificity is 10%.The algorithm overall performed well in predicted cases with no CHD risk after 10 years and was considerable faster.
+
+
+```
+
+```{r warning=FALSE}
+      
+
+          ################ Binomial Regression Methodology ################
+
+##Objective: Create a binomial regression model for the target variable based on the other variables in the dataset
+
+Heart_Study_Train_glm_Data <- Heart_Study_Train_Data
+Heart_Study_Train_glm_Data$Ten_Year_CHD <- dummy.code(Heart_Study_Train_glm_Data$Ten_Year_CHD)[,2]
+Heart_Study_Test_glm_Data <- Heart_Study_Test_Data
+Heart_Study_Test_glm_Data$Ten_Year_CHD <- dummy.code(Heart_Study_Test_glm_Data$Ten_Year_CHD)[,2]
+
+Heart_Study_glm_raw <- glm(Ten_Year_CHD ~ ., data = Heart_Study_Train_glm_Data) #creating a binomial regression model based on the target variable (Ten_Year_CHD)
+
+summary(Heart_Study_glm_raw) #printing summary of the model
+
+###Backward regression###
+
+step(glm(Ten_Year_CHD ~ ., data = Heart_Study_Train_glm_Data), direction = "backward") #implementing backward regression technique to find out the statistically significant variables capable of building a significant model
+
+Fitted_Heart_Study_glm <- glm(formula = Ten_Year_CHD ~ Gender.0 + Prevalent_Stroke.0 +
+Prevalent_Hyp.0 + Diabetes.0 + Age + Cigs_Per_Day + Sys_BP + Glucose, data = Heart_Study_Train_glm_Data)
+
+summary(Fitted_Heart_Study_glm) #looking into the structure of fitted logisitic regression model
+
+##Gender,Stroke prevalence,Age,Cigarettes consumption per day,systolic blood pressure and glucose levels seems to be ideal predictors for coronary heart disease prediction.
+
+##Confusion Matrix 
+
+Train_glm_Model <- train(Ten_Year_CHD ~ Gender.0 + Prevalent_Stroke.0 + 
+Prevalent_Hyp.0 + Diabetes.0 + Age + Cigs_Per_Day + Sys_BP + Glucose, data = Heart_Study_Train_Data,method = 'glm',family = 'binomial') #training glm model
+
+Heart_Study_glm_Test_Data_Predictions <- predict(Train_glm_Model, Heart_Study_Test_Data) #predictions of the built binomial model on the test dataset
+
+confusionMatrix(Heart_Study_glm_Test_Data_Predictions,Heart_Study_Test_Data$Ten_Year_CHD) #creating a confusion matrix between the actual target variables of the test dataset and the observed variables predicted from the built glm model
+
+### Accuracy for logistic regression is 85%.891 cases were predicted correctly as the cases with no CHD risk and 12 cases were predicted as cases with Ten Year Coronary Heart Risk Prediction.
+
+#####Calculating AUC and RMSE
+
+RMSE_Heart_Study_glm <- round(sqrt(mean(residuals(Fitted_Heart_Study_glm)^2)),digits = 2) #root mean squared error
+
+RMSE_Heart_Study_glm #0.34 is the RMSE error for logisitic regression Model
+
+Heart_Study_ROC_Prob_glm_Prediction <- predict(Fitted_Heart_Study_glm,newdata = Heart_Study_Test_Data, type="response") #extract the predicted prob of target variable for the testing dataset
+
+Heart_Study_ROC_glm_Prediction <- prediction(Heart_Study_ROC_Prob_glm_Prediction,Heart_Study_Test_Data$Ten_Year_CHD) #predictions based on the target variable
+auc_glm_performance <- performance(Heart_Study_ROC_glm_Prediction, measure = "auc") #computing AUC for the decision tree model 
+auc_glm_performance@y.values[[1]] #0.73 is the Area Under Curve Score for logisitic regression.This score indicates that it is a fairly good classifier.
+
+#####10-Fold Validation on The decision Tree model
+
+trcontrol <- trainControl(method = "repeatedcv",number = 10,savePredictions = TRUE) #setting k-fold experiments
+
+glm_Fit <- train(Ten_Year_CHD ~., data = Heart_Study_Train_Data,method = "glm",family = "binomial",trControl = trcontrol, tuneLength = 10) #training glm on the data
+glm_Prediction <- predict(glm_Fit, newdata = Heart_Study_Test_Data) #predictions on the tetsing data
+confusionMatrix(data = glm_Prediction, Heart_Study_Test_Data$Ten_Year_CHD) #confusion matrix between predicted variable and actual target variable
+
+##85% is the 10-fold Cross Validation Accuracy.Specificity is 7% and Sensitivity is 99%.This algorithm has done well in classifying True Positive Cases.
+
+```
+
+```{r warning=FALSE}
+
+                ######### Model/Regression Tree for the Heart Study Data #########
+
+#### Objective: to predict an overall/individual risk of factors contributing a particular lifestyle of a person results in a ten year risk of coronary heart disease or not 
+
+#converting factor variables into numerical variables
+Heart_Disease_Train_tr_Data <- Heart_Study_Train_Data
+Heart_Disease_Test_tr_Data <- Heart_Study_Test_Data
+Heart_Disease_Train_tr_Data$Ten_Year_CHD <- dummy.code(Heart_Disease_Train_tr_Data$Ten_Year_CHD)[,2]
+Heart_Disease_Test_tr_Data$Ten_Year_CHD <- dummy.code(Heart_Disease_Test_tr_Data$Ten_Year_CHD)[,2]  
+
+str(Heart_Disease_Train_tr_Data) #analyzing the structure of the Heart_Disease_Train_Data
+str(Heart_Disease_Test_tr_Data) #analyzing the structure of the heart disease test data
+
+Heart_Study_Rpart_Model <- rpart(Ten_Year_CHD ~ ., data = Heart_Disease_Train_tr_Data) # Training a decision tree model on the heart study data 
+
+Heart_Study_Rpart_Model #looking into the structure of the regression tree model object on the training dataset
+
+##Interpretation: It gives us information about the number of instances/conditions that made the algorithm to arrive at a decision with significance level.
+
+summary(Heart_Study_Rpart_Model) #looking into the structure of the created regression tree object
+
+##Visualizing Decision Model Trees
+
+rpart.plot(Heart_Study_Rpart_Model,digits = 4, fallen.leaves = TRUE, type = 3, extra = 101) #creating decision trees by customizing certain parameters such that the leaf nodes should be aligned at the bottom of the plot and type and extra parameters customizes the decision and node labels
+
+##Evaluating Model Performance
+
+Heart_Study_Rpart_Model_Predictions <- predict(Heart_Study_Rpart_Model, Heart_Disease_Test_tr_Data) #predictions of the regression tree model object on the testing dataset
+
+summary(Heart_Study_Rpart_Model_Predictions)
+summary(Heart_Disease_Test_tr_Data$Ten_Year_CHD)
+
+#Measuring performance of the model with Mean Absolute Error and RMSE
+
+##creating Mean Absolute Error between the actual and observed variables
+
+##A function which computes the mean absolute error between the variables passed in
+
+Mean_Abs_Error <- function(actual_val, pred_val){
+  
+  
+  return(mean(abs(actual_val - pred_val)))
+  
+  
+}
+
+Mean_Abs_Error(actual_val = Heart_Disease_Test_tr_Data$Ten_Year_CHD, pred_val = Heart_Study_Rpart_Model_Predictions) #computing Mean Absolute Error between actual and predicted variable
+
+##0.24 is the Mean Absolute Error between the actual variable and predicted variable
+
+##Improving Model Performance
+
+Heart_Study_M5P_Model <- M5P(Ten_Year_CHD ~ ., data = Heart_Disease_Train_tr_Data) #building M5P decision tree on the heart study dataset
+
+Heart_Study_M5P_Model #loading the M5P based decision tree object.Linear Models are created at each nodes.In this case, for LM-1, for a co-efficient of 0.2037, increase in 0.5881 units of Glucose is gonna decrease the overall CHD risk
+
+Heart_Study_M5P_Model_Predictions <- predict(Heart_Study_M5P_Model, Heart_Disease_Test_tr_Data) #predictions on the test dataset
+
+Mean_Abs_Error(actual_val = Heart_Disease_Test_tr_Data$Ten_Year_CHD, pred_val = Heart_Study_M5P_Model_Predictions) #computing Mean Absolute Error between actual and predicted variable
+
+#0.23 is the Mean Absolute Error.This algorithm didnt give a lot of information on the statistics.But it indicated ideal predictors for the coronary heart disease and the Mean Absolute Error was Low.
+
+##RMSE Calculation for M5P built decision trees
+
+summary(Heart_Study_M5P_Model)
+
+#0.342 is the Root Mean Square Error for the Model
+
+RMSE_Heart_Study_Rpart_Model <- round(sqrt(mean(residuals(Heart_Study_Rpart_Model)^2)),digits = 2)
+
+RMSE_Heart_Study_Rpart_Model #0.35 is the Root Mean Squared Error for the model trees built
+
+Heart_Study_M5P_Model_ROC_Prob_Prediction <- predict(Heart_Study_M5P_Model,newdata = Heart_Disease_Test_tr_Data) #extract the predicted prob of target variable for the testing dataset
+
+Heart_Study_M5P_Model_ROC_Prediction <- prediction(Heart_Study_M5P_Model_ROC_Prob_Prediction,Heart_Disease_Test_tr_Data$Ten_Year_CHD) #predictions based on the target variable
+auc_performance <- performance(Heart_Study_M5P_Model_ROC_Prediction, measure = "auc") #computing AUC for the decision tree model 
+auc_performance@y.values[[1]] #Area Under Curve Score is 74%.The score indicates that its nearly a good classifier.
+
+###K-Fold Validation on The decision Tree model
+
+trcontrol <- trainControl(method = "repeatedcv",number = 10,savePredictions = TRUE) #setting no of experiments
+
+M5P_Model_Fit <- train(Ten_Year_CHD ~., data = Heart_Study_Train_Data,method = "rpart",trControl = trcontrol, tuneLength = 10) #training a rpart model on the data
+CV_M5P_Prediction <- predict(M5P_Model_Fit, newdata = Heart_Study_Test_Data) #predictions on the tetsing data
+confusionMatrix(data = CV_M5P_Prediction, Heart_Study_Test_Data$Ten_Year_CHD ) #confusion matrix between predicted variable and actual target variable
+
+##Interpretation: 85% is the 10-fold validation accuracy and sensitivity is 99%.This algorithm providing an insight over giving an insight over the ideal predictors contributing to a significant target variable.
+
+```
+```{r}
+                        ###########################################
+                        ####### Comparison Of Models ##############
+                        ###########################################
+
+AUC_Models <- data.frame( AUC = c( auc_knn_performance,auc_SVM_performance,auc_glm_performance@y.values[[1]],auc_performance@y.values[[1]]), Names = c("KNN","SVM","GLM","Model_Trees")) #comparison of models based on AUC
+
+plot_ly(AUC_Models,x = ~Names, y = ~AUC, type = "bar",color = ~Names) #creating a barplot between the machine learning models and area under curve values.
+
+##Interpretation: From the AUC evaluation metrics, KNN classifier performed well despite the accuracy being the same for almost all the algorithms.All the algorithms had almost a similiar accuracy,sensitivity and specificity which was quite surprising.But later then, when the models were evaluated further by Area Under Curve, the difference was in the place of the algorithms prediction of True Positives and True Negatives which was captured in AUC.SVM seemed to have the least AUC score indicating improper classification of TPR and FPR.Decision tree and binomial regression also proved be to be good classifiers according to AUC score of 0.74 and KNN being identified as the best among all(97%).Model/regression trees were built for this set of data to check for reliable set of rules for target variable and linear model built on each terminal nodes to predict ideal variables that influence the outcome variable.Once the glm model was fitted with ideal independent variables of the dataset, ideal predictors with statistical significance determining the CHD risk was determined.Regression tree further proved those Cases with prevelant hypertension,diabetes,no of cigs,systolic bp,glucose level were effective predictors of predicting cases for CHD risk.  
+
+
+```
+
+```{r warning=FALSE}
+
+                             ######### Model Ensemble #############  
+
+
+
+##converting the factor variables into numeric variable
+
+Heart_Study_Ensemble_Train_Data  <- Heart_Study_Train_Data
+Heart_Study_Ensemble_Train_Data$Ten_Year_CHD <-   as.numeric(as.character(Heart_Study_Ensemble_Train_Data$Ten_Year_CHD))
+
+Heart_Study_Ensemble_Test_Data <- Heart_Study_Test_Data
+Heart_Study_Ensemble_Test_Data$Ten_Year_CHD <- as.numeric(as.character(Heart_Study_Ensemble_Test_Data$Ten_Year_CHD))
+
+Ensemble_Heart_Study_Model <- SuperLearner(Y = Heart_Study_Ensemble_Train_Data$Ten_Year_CHD,X = Heart_Study_Ensemble_Train_Data[,!names(Heart_Study_Ensemble_Train_Data) %in% c("Ten_Year_CHD")],family = binomial(),SL.library = list("SL.knn","SL.ksvm","SL.glm","SL.rpart") ) #creating a model ensemble with the above created machine learning approaches: knn,decision trees,logistic regression and SVM
+
+Ensemble_Heart_Study_Model #looking into the structure of the created ensemble model.This ensemble explains the models risk and coefficients.
+
+#cross validation on the created ensemble model
+Cross_Validated_Ensemble_Heart_Study_Model <- CV.SuperLearner(Heart_Study_Ensemble_Train_Data$Ten_Year_CHD, Heart_Study_Ensemble_Train_Data[,!names(Heart_Study_Ensemble_Train_Data) %in% c("Ten_Year_CHD")],V=10,family = binomial(),SL.library = list("SL.knn",                                                                                  "SL.ksvm",                                                                                 "SL.glm",
+                                                              "SL.rpart"))
+
+summary(Cross_Validated_Ensemble_Heart_Study_Model) #loading the summary of the cross validation created which provides an insight on the average risk of model,variation in the model and risk range of each algorithm.
+
+plot(Cross_Validated_Ensemble_Heart_Study_Model) #visualizing the performance of model ensemble
+
+### Conclusion: Super Learner/glm Approach seems to be a Best approach compared to other approaches and both seemed to comply with each other.
+
+```
+
+```{r}
+                            #######################
+                            ### Deployment ########
+                            #######################
+
+
+## Interactive Shiny App was created as a way of visualizing the results of each algorithm based upon the infed data. Data is processed,standardized and prepared for passing it into the modelling phase and is outputed in the UI of the interactive shiny application.Depending upon the algorithms choosen by the user, its evaluation metrics were outputted in the Shiny App.
+
+
+```
+

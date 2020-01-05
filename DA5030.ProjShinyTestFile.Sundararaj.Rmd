@@ -1,0 +1,24 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r warning=FALSE}
+
+##Test File for executing each function created for utilizing in creating shinyapp
+##Each function represents each CRISP-DM phases and also includes seperate functions for each Model Constructed: KNN,SVM,Decision Tree and glm. 
+
+ Data_mod <- Modify_Data(data = Heart_Dataset)
+ Data <- Data_Preparation(data = Data_mod)
+ Data_L <- Partition_Data(data = Data)
+ Train_D <- Data_L$train_Data
+ Test_D <- Data_L$test_data
+ KNN_L <- Model_Construction_KNN(Train_Data = Train_D,Test_Data = Test_D)
+ SVM_L <- Model_Construction_SVM(Train_Data = Train_D,Test_Data = Test_D)
+ glm_L <- Model_Construction_glm(Train_Data = Train_D, Test_Data = Test_D)
+ tree_L <- Model_Construction_Model_Tr(Train_Data = Train_D, Test_Data = Test_D)
+
+
+```
+
